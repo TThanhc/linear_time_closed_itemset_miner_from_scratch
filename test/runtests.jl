@@ -25,6 +25,7 @@ function brute_closed_frequent(transactions::Vector{Vector{Int}}, minsup::Int)
     out = Dict{Tuple{Vararg{Int}}, Int}()
 
     for s in candidates
+        isempty(s) && continue
         sset = Set(s)
         tids = [i for (i, t) in enumerate(txsets) if all(x in t for x in sset)]
         supp = length(tids)
