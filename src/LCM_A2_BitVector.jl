@@ -1,4 +1,4 @@
-module LCMClosedMining
+module LCM_A2_BitVector
 
 export read_spmf_transactions,
        write_spmf_closed_itemsets,
@@ -8,12 +8,12 @@ export read_spmf_transactions,
        results_to_dict
 
 struct MiningResult
-    itemset::Vector{Int}
+    itemset::Vector{Int32}
     support::Int
 end
 
-function read_spmf_transactions(path::AbstractString)::Vector{Vector{Int}}
-    txs = Vector{Vector{Int}}()
+function read_spmf_transactions(path::AbstractString)::Vector{Vector{Int32}}
+    txs = Vector{Vector{Int32}}()
     open(path, "r") do io
         for raw in eachline(io)
             line = strip(raw)
@@ -21,7 +21,7 @@ function read_spmf_transactions(path::AbstractString)::Vector{Vector{Int}}
             startswith(line, "#") && continue
             startswith(line, "%") && continue
             startswith(line, "@") && continue
-            items = parse.(Int, split(line))
+            items = parse.(Int32, split(line))
             sort!(items)
             unique!(items)
             push!(txs, items)
@@ -57,8 +57,8 @@ function parse_minsup_to_absolute(minsup_raw::AbstractString, ntransactions::Int
     end
 end
 
-function _collect_items(transactions::Vector{Vector{Int}})::Vector{Int}
-    seen = Set{Int}()
+function _collect_items(transactions::Vector{Vector{Int32}})::Vector{Int32}
+    seen = Set{Int32}()
     for t in transactions
         for x in t
             push!(seen, x)
@@ -69,9 +69,9 @@ function _collect_items(transactions::Vector{Vector{Int}})::Vector{Int}
     return items
 end
 
-function _build_tidsets(transactions::Vector{Vector{Int}}, items::Vector{Int})
+function _build_tidsets(transactions::Vector{Vector{Int32}}, items::Vector{Int32})
     n = length(transactions)
-    tids = Dict{Int, BitVector}()
+    tids = Dict{Int32, BitVector}()
     for item in items
         tids[item] = falses(n)
     end
@@ -87,22 +87,40 @@ end
     return count(bits)
 end
 
+# --- HÀM KIỂM TRA BAO ĐÓNG TẦNG THẤP: KHÔNG SINH ALLOCATIONS ---
+@inline function _is_subset_bit(tidset::BitVector, item_bits::BitVector)::Bool
+    c1 = tidset.chunks
+    c2 = item_bits.chunks
+    @inbounds for i in eachindex(c1)
+        # Nếu (chunk_gốc AND chunk_item) khác chunk_gốc 
+        # nghĩa là item_bits không chứa trọn vẹn tidset tại cụm bit này
+        (c1[i] & c2[i]) == c1[i] || return false
+    end
+    return true
+end
+
 function _closure_from_tidset(
     tidset::BitVector,
-    items::Vector{Int},
-    tids::Dict{Int, BitVector}
-)::Vector{Int}
-    c = Int[]
-    for item in items
-        # item is in closure iff every transaction of tidset contains item
-        if isempty(findfirst(tidset)) || all((!tidset[i]) || tids[item][i] for i in eachindex(tidset))
+    items::Vector{Int32},
+    tids::Dict{Int32, BitVector}
+)::Vector{Int32}
+    c = Int32[]
+    nt = count(tidset)
+    nt == 0 && return c
+
+    @inbounds for item in items
+        # Cắt tỉa sớm (Early Pruning) bằng phần mềm giống Bản A1
+        count(tids[item]) < nt && continue
+        
+        # Kiểm tra đóng bằng hàm duyệt chunk không tốn RAM
+        if _is_subset_bit(tidset, tids[item])
             push!(c, item)
         end
     end
     return c
 end
 
-function mine_closed_itemsets_optimized(transactions::Vector{Vector{Int}}, minsup::Int)::Vector{MiningResult}
+function mine_closed_itemsets_optimized(transactions::Vector{Vector{Int32}}, minsup::Int)::Vector{MiningResult}
     n = length(transactions)
     n == 0 && return MiningResult[]
 
@@ -112,9 +130,9 @@ function mine_closed_itemsets_optimized(transactions::Vector{Vector{Int}}, minsu
 
     root = _closure_from_tidset(universe, items, tids)
     results = MiningResult[]
-    seen = Set{Tuple{Vararg{Int}}}()
+    seen = Set{Tuple{Vararg{Int32}}}()
 
-    function recurse(P::Vector{Int}, T::BitVector, tail::Int)
+    function recurse(P::Vector{Int32}, T::BitVector, tail::Int32)
         supp = _support(T)
         supp < minsup && return
 
@@ -130,6 +148,7 @@ function mine_closed_itemsets_optimized(transactions::Vector{Vector{Int}}, minsu
             e <= tail && continue
             e in P && continue
 
+            # Phép AND này tạo nhánh mới, bắt buộc phải sinh mảng tạm Te
             Te = T .& tids[e]
             se = _support(Te)
             se < minsup && continue
@@ -139,81 +158,20 @@ function mine_closed_itemsets_optimized(transactions::Vector{Vector{Int}}, minsu
             new_items = [x for x in C if !(x in Pset)]
             isempty(new_items) && continue
 
-            # PPC extension condition: smallest new item must be current extension item.
+            # Điều kiện mở rộng PPC
             minimum(new_items) == e || continue
 
             recurse(C, Te, e)
         end
     end
 
-    recurse(root, universe, 0)
-    sort!(results, by = r -> (length(r.itemset), r.itemset, r.support))
-    return results
-end
-
-function mine_closed_itemsets_baseline(transactions::Vector{Vector{Int}}, minsup::Int)::Vector{MiningResult}
-    n = length(transactions)
-    n == 0 && return MiningResult[]
-
-    txsets = [Set(t) for t in transactions]
-    items = _collect_items(transactions)
-    supp_map = Dict{Tuple{Vararg{Int}}, Int}()
-
-    function support_of(itemset::Vector{Int})::Int
-        sset = Set(itemset)
-        c = 0
-        @inbounds for t in txsets
-            ok = true
-            for x in sset
-                if !(x in t)
-                    ok = false
-                    break
-                end
-            end
-            c += ok
-        end
-        return c
-    end
-
-    function enum_subsets(prefix::Vector{Int}, start_idx::Int)
-        s = support_of(prefix)
-        if s >= minsup
-            if !isempty(prefix)
-                supp_map[Tuple(prefix)] = s
-            end
-            for i in start_idx:length(items)
-                push!(prefix, items[i])
-                enum_subsets(prefix, i + 1)
-                pop!(prefix)
-            end
-        end
-    end
-
-    enum_subsets(Int[], 1)
-
-    results = MiningResult[]
-    keys_list = collect(keys(supp_map))
-    for k in keys_list
-        s = supp_map[k]
-        closed = true
-        ks = Set(k)
-        for k2 in keys_list
-            length(k2) <= length(k) && continue
-            supp_map[k2] == s || continue
-            if all(x in Set(k2) for x in ks)
-                closed = false
-                break
-            end
-        end
-        closed && push!(results, MiningResult(collect(k), s))
-    end
-
+    recurse(root, universe, Int32(0))
     sort!(results, by = r -> (length(r.itemset), r.itemset, r.support))
     return results
 end
 
 function results_to_dict(results::Vector{MiningResult})
-    d = Dict{Tuple{Vararg{Int}}, Int}()
+    d = Dict{Tuple{Vararg{Int32}}, Int}()
     for r in results
         d[Tuple(r.itemset)] = r.support
     end
