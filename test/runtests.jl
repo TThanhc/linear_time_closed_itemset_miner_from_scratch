@@ -65,7 +65,7 @@ end
         txs = [Int32.(t) for t in raw_txs]
         expected = global_brute_force_baseline(txs, minsup)
         
-        got_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_optimized(txs, minsup))
+        got_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_baseline(txs, minsup))
         @test got_a1 == expected
         
         got_a2 = results_to_dict(LCM_A2_BitVector.mine_closed_itemsets_optimized(txs, minsup))
@@ -89,7 +89,7 @@ end
         (1,2,3,5) => 2,
     )
 
-    got_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_optimized(txs, minsup))
+    got_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_baseline(txs, minsup))
     @test got_a1 == expected_spmf
 
     got_a2 = results_to_dict(LCM_A2_BitVector.mine_closed_itemsets_optimized(txs, minsup))
@@ -129,7 +129,7 @@ end
         txs_a2 = LCM_A2_BitVector.read_spmf_transactions(path)
         minsup = 2
         
-        res_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_optimized(txs_a1, minsup))
+        res_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_baseline(txs_a1, minsup))
         res_a2 = results_to_dict(LCM_A2_BitVector.mine_closed_itemsets_optimized(txs_a2, minsup))
         
         @test res_a1 == res_a2

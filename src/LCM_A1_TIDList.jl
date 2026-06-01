@@ -3,7 +3,6 @@ module LCM_A1_TIDList
 export read_spmf_transactions,
        write_spmf_closed_itemsets,
        mine_closed_itemsets_baseline,
-       mine_closed_itemsets_optimized,
        parse_minsup_to_absolute,
        results_to_dict
 
@@ -130,7 +129,7 @@ end
 """
 Thuật toán LCM tối ưu hóa khai phá tập phổ biến đóng bằng mảng chỉ mục giao dịch (TID-lists).
 """
-function mine_closed_itemsets_optimized(
+function mine_closed_itemsets_baseline(
     transactions::Vector{Vector{T}}, 
     minsup::Int
 )::Vector{MiningResult} where {T<:Integer}

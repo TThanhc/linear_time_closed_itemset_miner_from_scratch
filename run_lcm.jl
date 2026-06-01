@@ -63,7 +63,7 @@ function main()
         println("MinSup tuyet doi: ", abs_minsup)
         println("-> Dang chay thuat toan khai pha...")
         
-        @time results = LCM_A1_TIDList.mine_closed_itemsets_optimized(txs, abs_minsup)
+        @time results = LCM_A1_TIDList.mine_closed_itemsets_baseline(txs, abs_minsup)
     else
         txs = LCM_A2_BitVector.read_spmf_transactions(input)
         abs_minsup = LCM_A2_BitVector.parse_minsup_to_absolute(minsup_raw, length(txs))
