@@ -101,22 +101,43 @@ end
 
 function _closure_from_tidset(
     tidset::BitVector,
-    items::Vector{Int32},
-    tids::Dict{Int32, BitVector}
+    tids::Dict{Int32, BitVector},
+    item_supports::Dict{Int32, Int},
+    tx_sizes::Vector{Int32},
+    transactions::Vector{Vector{Int32}}
 )::Vector{Int32}
     c = Int32[]
     nt = count(tidset)
     nt == 0 && return c
 
-    @inbounds for item in items
-        # Cắt tỉa sớm (Early Pruning) bằng phần mềm giống Bản A1
-        count(tids[item]) < nt && continue
-        
-        # Kiểm tra đóng bằng hàm duyệt chunk không tốn RAM
+    min_tx_idx = -1
+    min_sz = typemax(Int32)
+
+    c_chunks = tidset.chunks
+    @inbounds for i in eachindex(c_chunks)
+        chunk = c_chunks[i]
+        while chunk != 0
+            tz = trailing_zeros(chunk)
+            idx = (i - 1) * 64 + tz + 1
+            sz = tx_sizes[idx]
+            if sz < min_sz
+                min_sz = sz
+                min_tx_idx = idx
+            end
+            chunk &= chunk - 1 # clear lowest set bit
+        end
+    end
+
+    min_tx_idx == -1 && return c
+
+    cand_items = transactions[min_tx_idx]
+    @inbounds for item in cand_items
+        item_supports[item] < nt && continue
         if _is_subset_bit(tidset, tids[item])
             push!(c, item)
         end
     end
+    sort!(c)
     return c
 end
 
@@ -126,40 +147,63 @@ function mine_closed_itemsets_optimized(transactions::Vector{Vector{Int32}}, min
 
     items = _collect_items(transactions)
     tids = _build_tidsets(transactions, items)
-    universe = trues(n)
+    
+    item_supports = Dict{Int32, Int}()
+    for item in items
+        item_supports[item] = _support(tids[item])
+    end
+    
+    tx_sizes = Int32[length(t) for t in transactions]
 
-    root = _closure_from_tidset(universe, items, tids)
+    universe = trues(n)
+    root = _closure_from_tidset(universe, tids, item_supports, tx_sizes, transactions)
+    
     results = MiningResult[]
-    seen = Set{Tuple{Vararg{Int32}}}()
 
     function recurse(P::Vector{Int32}, T::BitVector, tail::Int32)
         supp = _support(T)
         supp < minsup && return
 
         if !isempty(P)
-            key = Tuple(P)
-            if !(key in seen)
-                push!(seen, key)
-                push!(results, MiningResult(copy(P), supp))
-            end
+            push!(results, MiningResult(copy(P), supp))
         end
 
         for e in items
             e <= tail && continue
             e in P && continue
 
-            # Phép AND này tạo nhánh mới, bắt buộc phải sinh mảng tạm Te
             Te = T .& tids[e]
             se = _support(Te)
             se < minsup && continue
 
-            C = _closure_from_tidset(Te, items, tids)
-            Pset = Set(P)
-            new_items = [x for x in C if !(x in Pset)]
-            isempty(new_items) && continue
-
-            # Điều kiện mở rộng PPC
-            minimum(new_items) == e || continue
+            C = _closure_from_tidset(Te, tids, item_supports, tx_sizes, transactions)
+            
+            # Allocation-free PPC check (Two-pointers)
+            # Find minimum item in C that is not in P
+            i = 1
+            j = 1
+            len_C = length(C)
+            len_P = length(P)
+            min_new_item = -1
+            
+            while i <= len_C
+                if j <= len_P
+                    if C[i] == P[j]
+                        i += 1
+                        j += 1
+                    elseif C[i] < P[j]
+                        min_new_item = C[i]
+                        break
+                    else
+                        j += 1
+                    end
+                else
+                    min_new_item = C[i]
+                    break
+                end
+            end
+            
+            min_new_item == e || continue
 
             recurse(C, Te, e)
         end
