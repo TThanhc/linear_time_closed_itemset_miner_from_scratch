@@ -1,9 +1,11 @@
 #!/usr/bin/env julia
 
+include(joinpath(@__DIR__, "src", "LCM_A0_PaperBaseline.jl"))
 include(joinpath(@__DIR__, "src", "LCM_A1_TIDList.jl"))
 include(joinpath(@__DIR__, "src", "LCM_A2_BitVector.jl"))
 include(joinpath(@__DIR__, "src", "AssociationRules.jl"))
 
+using .LCM_A0_PaperBaseline
 using .LCM_A1_TIDList
 using .LCM_A2_BitVector
 using .AssociationRules
@@ -20,7 +22,7 @@ function parse_args(args::Vector{String})
           <input_file>  : Duong dan file du lieu (vi du: data/mushrooms.txt)
           <minsup>      : Nguong pho bien toi thieu (vi du: 10% hoac 0.1 hoac 842)
           <task>        : Tieu chi chay ('mine' de tim tap dong, 'rules' de sinh luat)
-          <version>     : Phien ban thuat toan ('a1' cho TID-list, 'a2' cho BitVector)
+          <version>     : Phien ban thuat toan ('a0' cho Paper Baseline, 'a1' cho TID-list, 'a2' cho BitVector)
           [minconf]     : (Tuy chon) Nguong tin cay cho luat, mac dinh la 0.5 (vi du: 0.6)
         """)
     end
@@ -31,7 +33,7 @@ function parse_args(args::Vector{String})
     version = lowercase(args[4])
 
     task in ("mine", "rules") || error("Tham so <task> phai la 'mine' hoac 'rules'")
-    version in ("a1", "a2") || error("Tham so <version> phai la 'a1' hoac 'a2'")
+    version in ("a0", "a1", "a2") || error("Tham so <version> phai la 'a0', 'a1' hoac 'a2'")
     
     minconf = task == "rules" ? (length(args) >= 5 ? parse(Float64, args[5]) : 0.5) : 0.0
 
@@ -52,10 +54,19 @@ function main()
     println("--- KHOI DONG HE THONG ---")
     println("File du lieu: ", input)
     println("Tac vu       : ", task)
-    println("Phien ban    : ", version == "a1" ? "A1 (TID-list)" : "A2 (BitVector Toi Uu Chunk)")
+    println("Phien ban    : ", version == "a0" ? "A0 (Paper Baseline)" : (version == "a1" ? "A1 (TID-list)" : "A2 (BitVector Toi Uu Chunk)"))
 
     # 1. Doc du lieu giao dich
-    if version == "a1"
+    if version == "a0"
+        txs = LCM_A0_PaperBaseline.read_spmf_transactions(input)
+        abs_minsup = LCM_A0_PaperBaseline.parse_minsup_to_absolute(minsup_raw, length(txs))
+        
+        println("Transactions : ", length(txs))
+        println("MinSup tuyet doi: ", abs_minsup)
+        println("-> Dang chay thuat toan khai pha...")
+        
+        @time results = LCM_A0_PaperBaseline.mine_closed_itemsets_paper(txs, abs_minsup)
+    elseif version == "a1"
         txs = LCM_A1_TIDList.read_spmf_transactions(input)
         abs_minsup = LCM_A1_TIDList.parse_minsup_to_absolute(minsup_raw, length(txs))
         
@@ -84,7 +95,9 @@ function main()
     
     # 2. Xu ly dau ra dua tren Tac vu (Task)
     if task == "mine"
-        if version == "a1"
+        if version == "a0"
+            LCM_A0_PaperBaseline.write_spmf_closed_itemsets(output, results)
+        elseif version == "a1"
             LCM_A1_TIDList.write_spmf_closed_itemsets(output, results)
         else
             LCM_A2_BitVector.write_spmf_closed_itemsets(output, results)

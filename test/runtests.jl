@@ -1,5 +1,6 @@
 using Test
 
+include(joinpath(@__DIR__, "..", "src", "LCM_A0_PaperBaseline.jl"))
 include(joinpath(@__DIR__, "..", "src", "LCM_A1_TIDList.jl"))
 include(joinpath(@__DIR__, "..", "src", "LCM_A2_BitVector.jl"))
 
@@ -65,6 +66,9 @@ end
         txs = [Int32.(t) for t in raw_txs]
         expected = global_brute_force_baseline(txs, minsup)
         
+        got_a0 = results_to_dict(LCM_A0_PaperBaseline.mine_closed_itemsets_paper(txs, minsup))
+        @test got_a0 == expected
+        
         got_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_baseline(txs, minsup))
         @test got_a1 == expected
         
@@ -89,12 +93,16 @@ end
         (1,2,3,5) => 2,
     )
 
+    got_a0 = results_to_dict(LCM_A0_PaperBaseline.mine_closed_itemsets_paper(txs, minsup))
+    @test got_a0 == expected_spmf
+
     got_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_baseline(txs, minsup))
     @test got_a1 == expected_spmf
 
     got_a2 = results_to_dict(LCM_A2_BitVector.mine_closed_itemsets_optimized(txs, minsup))
     @test got_a2 == expected_spmf
 
+    @test LCM_A0_PaperBaseline.parse_minsup_to_absolute("40%", 5) == 2
     @test LCM_A1_TIDList.parse_minsup_to_absolute("40%", 5) == 2
     @test LCM_A2_BitVector.parse_minsup_to_absolute("0.4", 5) == 2
     @test LCM_A2_BitVector.parse_minsup_to_absolute("2", 5) == 2
@@ -125,13 +133,16 @@ end
         path = joinpath(@__DIR__, "..", "toy", fn)
         !isfile(path) && continue
         
+        txs_a0 = LCM_A0_PaperBaseline.read_spmf_transactions(path)
         txs_a1 = LCM_A1_TIDList.read_spmf_transactions(path)
         txs_a2 = LCM_A2_BitVector.read_spmf_transactions(path)
         minsup = 2
         
+        res_a0 = results_to_dict(LCM_A0_PaperBaseline.mine_closed_itemsets_paper(txs_a0, minsup))
         res_a1 = results_to_dict(LCM_A1_TIDList.mine_closed_itemsets_baseline(txs_a1, minsup))
         res_a2 = results_to_dict(LCM_A2_BitVector.mine_closed_itemsets_optimized(txs_a2, minsup))
         
+        @test res_a0 == res_a1
         @test res_a1 == res_a2
     end
 end

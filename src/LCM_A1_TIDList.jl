@@ -196,7 +196,9 @@ function mine_closed_itemsets_baseline(
         key in seen && return
         push!(seen, key)
 
-        push!(results, MiningResult(copy(P), supp))
+        if !isempty(P)
+            push!(results, MiningResult(copy(P), supp))
+        end
 
         @inbounds for e in items
             e <= tail && continue
