@@ -229,7 +229,7 @@ Ba script bổ sung dùng để tái sản xuất toàn bộ số liệu (4 data
 Chạy toàn bộ benchmark trên 4 dataset (`chess`, `mushrooms`, `retail`, `accidents`) với 6 điểm minsup/tập và cả 3 phiên bản (A0, A1, A2) = 72 trường hợp Julia, cộng SPMF-Java baseline 24 trường hợp. Đo runtime, peak RSS, byte cấp phát (`@allocated`), số closed itemsets.
 
 ```bash
-julia --project benchmark.jl       # khoảng 4 giờ (Accidents@0.6 mất ~90s cho A0)
+julia --project benchmark.jl       # khoảng 4 giờ
 ```
 
 Output:
@@ -373,7 +373,7 @@ Số liệu trích từ `results/runtime.csv` (đo trên Windows 11, AMD CPU, 16
 | accidents | 0.60   | 89,549  | 197,383 | 6,636   | 35,616    | 2,074   |
 | accidents | 0.95   | 861     | 2,703   | 316     | 1,206     | 15      |
 
-Tổng quan: trên dữ liệu dày (chess, mushrooms, accidents), A2 nhanh nhất và vượt SPMF 3–200 lần; trên dữ liệu thưa (retail), A0 nhanh nhất và vượt SPMF 6–13 lần. Đầy đủ 24 dòng ở `results/runtime.csv`.
+Tổng quan: trên dữ liệu dày (chess, mushrooms, accidents), A2 nhanh nhất và vượt SPMF 3 - 200 lần; trên dữ liệu thưa (retail), A0 nhanh nhất và vượt SPMF 6 - 13 lần. Đầy đủ 24 dòng ở `results/runtime.csv`.
 
 (Lưu ý: thời gian thực tế phụ thuộc CPU/RAM.)
 
