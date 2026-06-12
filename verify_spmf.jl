@@ -47,6 +47,30 @@ function count_lines(filename)
     return count
 end
 
+function load_results_to_dict(filename)
+    d = Dict{Tuple{Vararg{Int}}, Int}()
+    if !isfile(filename) return d end
+    open(filename) do f
+        for line in eachline(f)
+            line = strip(line)
+            isempty(line) && continue
+            parts = split(line, "#SUP:")
+            if length(parts) == 2
+                items_str = strip(parts[1])
+                supp = parse(Int, strip(parts[2]))
+                if isempty(items_str)
+                    d[()] = supp
+                else
+                    items = parse.(Int, split(items_str))
+                    sort!(items)
+                    d[Tuple(items)] = supp
+                end
+            end
+        end
+    end
+    return d
+end
+
 function format_spmf_minsup(minsup_raw)
     # SPMF nhận minsup ở dạng số thập phân (ví dụ 1% thì phải là 0.01) hoặc số tuyệt đối nguyên
     if endswith(minsup_raw, "%")
@@ -131,9 +155,41 @@ function run_test(input_file, minsup_raw, version)
     # 3. So sánh
     println("\n[3] KET QUA SO SANH:")
     if spmf_count == jl_count
-        println("✅ KHOP NHAU HOAN TOAN! ($spmf_count == $jl_count)")
+        println("✅ Kiem tra so luong: KHOP NHAU HOAN TOAN! ($spmf_count == $jl_count)")
+        
+        println("=> Dang kiem tra chi tiet tung tap dong va do ho tro (Support)...")
+        spmf_dict = load_results_to_dict(spmf_out)
+        jl_dict = load_results_to_dict(jl_out)
+        
+        is_match = true
+        missing_count = 0
+        wrong_supp_count = 0
+        
+        for (itemset, supp) in spmf_dict
+            if !haskey(jl_dict, itemset)
+                println("❌ LOI: Thieu tap dong '", join(itemset, " "), "' trong ket qua Julia.")
+                is_match = false
+                missing_count += 1
+                if missing_count > 5
+                    println("... (Con tiep, ngung in log de tranh qua dai)")
+                    break
+                end
+            elseif jl_dict[itemset] != supp
+                println("❌ LOI: Tap dong '", join(itemset, " "), "' sai support (SPMF: $supp, Julia: $(jl_dict[itemset])).")
+                is_match = false
+                wrong_supp_count += 1
+                if wrong_supp_count > 5
+                    println("... (Con tiep, ngung in log de tranh qua dai)")
+                    break
+                end
+            end
+        end
+        
+        if is_match
+            println("✅ Kiem tra chi tiet: TOAN BO CHI TIET VA SUPPORT KHOP NHAU HOAN TOAN!")
+        end
     else
-        println("❌ KHAC BIET! (SPMF tim duoc: $spmf_count, Julia tim duoc: $jl_count)")
+        println("❌ KHAC BIET SO LUONG! (SPMF tim duoc: $spmf_count, Julia tim duoc: $jl_count)")
     end
 end
 
