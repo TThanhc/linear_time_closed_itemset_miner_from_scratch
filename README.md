@@ -25,7 +25,10 @@ Mục tiêu:
 │   LICENSE
 │   README.md
 │   run_lcm.jl
-│
+│   benchmark.jl
+│   correctness.jl
+│   gen_synthetic.jl
+│   verify_spmf.jl
 ├───data 
 │       accidents.txt
 │       chess.txt
@@ -34,8 +37,21 @@ Mục tiêu:
 │       mushrooms.txt
 │       output_lcm_contextPasquier99.txt
 │       retail.txt
+│       synthetic_l50.txt
+│       synthetic_l60.txt
+│       synthetic_l70.txt
+│       synthetic_l80.txt
 │
 ├───results
+│       runtime.csv
+│       memory.csv
+│       memory_alloc.csv
+│       correctness.csv
+│       scalability.csv
+│       txn_length.csv
+│       spmf_runtime.csv
+│       <dataset>_mine_a{0,1,2}.txt   (12 file)
+│       <dataset>_spmf.txt           (4 file)
 │
 ├───src
 │       AssociationRules.jl
@@ -73,9 +89,11 @@ julia --version
 # 3. Chạy chương trình
 
 ## Cú pháp tổng quát
+
 ```bash
 julia --project run_lcm.jl <input_file> <minsup> <task> <version> [minconf]
 ```
+
 ---
 
 # 4. Tham số dòng lệnh
@@ -202,6 +220,72 @@ julia --project run_lcm.jl data/mushrooms.txt "5%" rules a2 0.6
 
 ---
 
+# 7. Benchmark và đánh giá
+
+Ba script bổ sung dùng để tái sản xuất toàn bộ số liệu (4 dataset × 6 minsup × 3 version + 4 stress test = 76 trường hợp, tất cả đạt 100% khớp SPMF).
+
+## 7.1. `benchmark.jl`, đo runtime và bộ nhớ
+
+Chạy toàn bộ benchmark trên 4 dataset (`chess`, `mushrooms`, `retail`, `accidents`) với 6 điểm minsup/tập và cả 3 phiên bản (A0, A1, A2) = 72 trường hợp Julia, cộng SPMF-Java baseline 24 trường hợp. Đo runtime, peak RSS, byte cấp phát (`@allocated`), số closed itemsets.
+
+```bash
+julia --project benchmark.jl       # khoảng 4 giờ
+```
+
+Output:
+
+| File                       | Nội dung                                                             |
+| -------------------------- | -------------------------------------------------------------------- |
+| `results/runtime.csv`      | (dataset, minsup, version, time_s, n_closed, memory_mb, bytes_alloc) |
+| `results/memory.csv`       | peak RSS tại minsup trung bình của mỗi dataset                       |
+| `results/memory_alloc.csv` | byte cấp phát qua tất cả các ngưỡng (72 dòng)                        |
+| `results/spmf_runtime.csv` | runtime SPMF-Java tương ứng (24 dòng)                                |
+
+## 7.2. `correctness.jl`, đối chiếu per-itemset với SPMF
+
+Tự động tải `spmf.jar` (~16MB) về thư mục gốc nếu chưa có. Với mỗi (dataset, minsup, version), sinh output Julia rồi so sánh từng itemset + support với SPMF-Java. Ghi 4 chỉ số recall / precision / Jaccard / exact-match.
+
+```bash
+julia --project correctness.jl     # cần Java 21+ trên PATH
+```
+
+Output: `results/correctness.csv`, 76 dòng (72 + 4 stress), **tất cả 100% exact match**, tổng ~937K itemsets so sánh.
+
+## 7.3. `gen_synthetic.jl`, CSDL tổng hợp
+
+Sinh 4 CSDL Bernoulli độc lập với m = 8124 giao dịch, n = 119 item, seed = 42, độ dài giao dịch L ∈ {50, 60, 70, 80} (xác suất mỗi item xuất hiện p = L/n). Minsup tuyệt đối = 2438 (= 30% × 8124).
+
+```bash
+julia --project gen_synthetic.jl
+```
+
+Output: `data/synthetic_l{50,60,70,80}.txt`, dùng cho thí nghiệm ảnh hưởng độ dài giao dịch.
+
+## 7.4. Yêu cầu Java 21+
+
+`correctness.jl` và `verify_spmf.jl` gọi SPMF thông qua `java`. Script tự động phát hiện `java` trên PATH:
+
+```julia
+const JAVA = Sys.which("java")
+isnothing(JAVA) && error("Khong tim thay 'java' trong PATH. Hay cai dat JDK 21+ va them vao PATH.")
+```
+
+Nếu không có Java trên PATH, script báo lỗi rõ ràng. Ngoài ra có thể đặt biến `JAVA_HOME` rồi thêm `$(JAVA_HOME)/bin` vào PATH.
+
+## 7.5. Bảng đầu ra CSV (data source cho báo cáo)
+
+| File                       | Cột chính                                        | Dùng cho mục |
+| -------------------------- | ------------------------------------------------ | ------------ |
+| `results/runtime.csv`      | dataset, minsup, version, time_s, n_closed       | 4.4          |
+| `results/spmf_runtime.csv` | dataset, minsup, t_spmf_s, n_spmf                | 4.4          |
+| `results/memory.csv`       | dataset, version, time_s, n_closed, memory_mb    | 4.6          |
+| `results/memory_alloc.csv` | dataset, minsup, version, bytes_alloc            | 4.6          |
+| `results/correctness.csv`  | dataset, minsup, version, recall, precision, ... | 4.3          |
+| `results/scalability.csv`  | (Retail prefix 10/25/50/75/100%)                 | 4.7          |
+| `results/txn_length.csv`   | (Synthetic Bernoulli L = 50/60/70/80)            | 4.8          |
+
+---
+
 # 9. Kiểm thử và Đối chiếu
 
 ## 9.1. Chạy Unit Tests tự động
@@ -223,26 +307,29 @@ Các test bao gồm:
 Dự án tích hợp sẵn công cụ tự động tải thư viện Java SPMF và chạy đối chiếu số lượng tập đóng 1-1 với phiên bản Julia (yêu cầu máy tính cài đặt Java 21 trở lên).
 
 Cú pháp:
+
 ```bash
-julia verify_spmf.jl <input_file> <minsup> <version>
+julia --project verify_spmf.jl <input_file> <minsup> <version>
 ```
 
 Ví dụ kiểm chứng A0 trên tập Retail:
+
 ```bash
-julia verify_spmf.jl data/retail.txt "1%" a0
+julia --project verify_spmf.jl data/retail.txt "1%" a0
 ```
 
 ---
 
 # 10. Datasets sử dụng
 
-| Dataset           | Mô tả                           |
-| ----------------- | ------------------------------- |
-| mushrooms         | Dense dataset                   |
-| retail            | Sparse market basket dataset    |
-| chess             | Dense combinational dataset     |
-| accidents         | Large sparse dataset            |
-| contextPasquier99 | Dataset kinh điển trong FCA/LCM |
+| Dataset                    | #Trans  | #Items | AvgLen  | Đặc điểm             | Lưới minsup                               | Kích thước   |
+| -------------------------- | ------- | ------ | ------- | -------------------- | ----------------------------------------- | ------------ |
+| `chess`                    | 3,196   | 75     | 37.0    | Dày đặc              | `[0.95, 0.90, 0.85, 0.80, 0.70, 0.60]`    | 337 KB       |
+| `mushrooms`                | 8,124   | 119    | 23.0    | Dày đặc              | `[0.70, 0.50, 0.30, 0.20, 0.10, 0.05]`    | 598 KB       |
+| `retail`                   | 88,162  | 16,470 | 10.3    | Thưa                 | `[0.10, 0.05, 0.01, 0.005, 0.002, 0.001]` | 4.0 MB       |
+| `accidents`                | 340,183 | 468    | 33.8    | Rất lớn, dày đặc     | `[0.95, 0.90, 0.85, 0.80, 0.70, 0.60]`    | 34.2 MB      |
+| `contextPasquier99`        | 10      | 5      | N/A     | Toy / unit test      | (chỉ test)                                | 35 B         |
+| `synthetic_l{50,60,70,80}` | 8,124   | 119    | 50 - 80 | Bernoulli, p = L/119 | minsup = 30% tuyệt đối (= 2438 giao dịch) | 1.2 - 2.0 MB |
 
 ---
 
@@ -274,13 +361,19 @@ julia verify_spmf.jl data/retail.txt "1%" a0
 
 # 12. Benchmark mẫu
 
-Ví dụ benchmark trên dataset mushrooms:
+Số liệu trích từ `results/runtime.csv` (đo trên Windows 11, AMD CPU, 16 GB RAM, Julia 1.10, Java 26):
 
-| Version | Time               | Closed Itemsets |
-| ------- | ------------------ | --------------- |
-| A0      | nhanh nhất         | ~4.1M           |
-| A1      | ~4s                | ~4.1M           |
-| A2      | phụ thuộc cấu hình | tương đương     |
+| Dataset   | minsup | A0 (ms) | A1 (ms) | A2 (ms) | SPMF (ms) | #Closed |
+| --------- | ------ | ------- | ------- | ------- | --------- | ------- |
+| chess     | 0.60   | 52,216  | 11,118  | 1,066   | 15,184    | 98,392  |
+| chess     | 0.95   | 14      | 16      | 2       | 215       | 73      |
+| mushrooms | 0.05   | 2,941   | 2,467   | 190     | 1,660     | 12,789  |
+| retail    | 0.001  | 1,061   | 60,650  | 204,588 | 13,654    | 7,572   |
+| retail    | 0.10   | 43      | 3,176   | 632     | 487       | 9       |
+| accidents | 0.60   | 89,549  | 197,383 | 6,636   | 35,616    | 2,074   |
+| accidents | 0.95   | 861     | 2,703   | 316     | 1,206     | 15      |
+
+Tổng quan: trên dữ liệu dày (chess, mushrooms, accidents), A2 nhanh nhất và vượt SPMF 3 - 200 lần; trên dữ liệu thưa (retail), A0 nhanh nhất và vượt SPMF 6 - 13 lần. Đầy đủ 24 dòng ở `results/runtime.csv`.
 
 (Lưu ý: thời gian thực tế phụ thuộc CPU/RAM.)
 
