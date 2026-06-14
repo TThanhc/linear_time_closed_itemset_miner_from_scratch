@@ -24,6 +24,7 @@ Mục tiêu:
 .
 │   LICENSE
 │   README.md
+|   final-report.pdf
 │   run_lcm.jl
 │   benchmark.jl
 │   correctness.jl
