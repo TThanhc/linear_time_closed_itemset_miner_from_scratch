@@ -24,7 +24,7 @@ Mục tiêu:
 .
 │   LICENSE
 │   README.md
-|   final-report.pdf
+|   Project.toml
 │   run_lcm.jl
 │   benchmark.jl
 │   correctness.jl
@@ -43,6 +43,9 @@ Mục tiêu:
 │       synthetic_l70.txt
 │       synthetic_l80.txt
 │
+├───docs
+|       Report.pdf
+|
 ├───results
 │       runtime.csv
 │       memory.csv
